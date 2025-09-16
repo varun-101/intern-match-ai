@@ -1,0 +1,199 @@
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { HelpCircle, MapPin, Calendar, DollarSign, Building, Eye } from "lucide-react";
+import { useLocation } from "wouter";
+
+interface MatchCardProps {
+  id: string;
+  title: string;
+  company?: string;
+  location: string;
+  matchScore: number;
+  matchReasons: string[];
+  duration?: string;
+  stipend?: string;
+  skills: string[];
+  status: 'pending' | 'accepted' | 'rejected' | 'open' | 'closed';
+  onApply?: () => void;
+  onAccept?: () => void;
+  onReject?: () => void;
+  showActions?: boolean;
+  type: 'internship' | 'candidate';
+  candidateName?: string;
+  university?: string;
+}
+
+export default function MatchCard({
+  id,
+  title,
+  company,
+  location,
+  matchScore,
+  matchReasons,
+  duration,
+  stipend,
+  skills,
+  status,
+  onApply,
+  onAccept,
+  onReject,
+  showActions = true,
+  type,
+  candidateName,
+  university
+}: MatchCardProps) {
+  const [, setLocation] = useLocation();
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return "text-green-600";
+    if (score >= 60) return "text-yellow-600";
+    return "text-red-600";
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'accepted': return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+      case 'rejected': return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
+      case 'pending': return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
+      default: return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
+    }
+  };
+
+  const handleViewDetails = () => {
+    if (type === 'internship') {
+      setLocation(`/internship/${id}`);
+    } else {
+      setLocation(`/student/${id}`);
+    }
+  };
+
+  return (
+    <Card className="hover-elevate transition-all duration-200" data-testid={`card-${type}-${title.replace(/\s+/g, '-').toLowerCase()}`}>
+      <CardHeader className="pb-4">
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <h3 className="font-semibold text-lg leading-tight" data-testid={`text-${type}-title`}>
+              {type === 'candidate' ? candidateName : title}
+            </h3>
+            <p className="text-muted-foreground text-sm mt-1">
+              {type === 'candidate' ? university : company}
+            </p>
+            {type === 'internship' && (
+              <p className="text-sm font-medium text-foreground mt-1">{title}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="text-right">
+              <div className={`text-2xl font-bold ${getScoreColor(matchScore)}`} data-testid="text-match-score">
+                {matchScore}%
+              </div>
+              <div className="text-xs text-muted-foreground">AI Match</div>
+            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6" data-testid="button-match-info">
+                  <HelpCircle className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <div className="space-y-1">
+                  <p className="font-medium">Why this match?</p>
+                  <ul className="text-xs space-y-1">
+                    {matchReasons.map((reason, index) => (
+                      <li key={index}>• {reason}</li>
+                    ))}
+                  </ul>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+        <Progress value={matchScore} className="mt-3" data-testid="progress-match-score" />
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+          <div className="flex items-center gap-1">
+            <MapPin className="h-4 w-4" />
+            <span>{location}</span>
+          </div>
+          {duration && (
+            <div className="flex items-center gap-1">
+              <Calendar className="h-4 w-4" />
+              <span>{duration}</span>
+            </div>
+          )}
+          {stipend && (
+            <div className="flex items-center gap-1">
+              <DollarSign className="h-4 w-4" />
+              <span>{stipend}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {skills.slice(0, 6).map((skill, index) => (
+            <Badge key={index} variant="secondary" className="text-xs" data-testid={`badge-skill-${index}`}>
+              {skill}
+            </Badge>
+          ))}
+          {skills.length > 6 && (
+            <Badge variant="outline" className="text-xs">
+              +{skills.length - 6} more
+            </Badge>
+          )}
+        </div>
+
+        <Badge className={getStatusColor(status)} data-testid="badge-status">
+          {status.charAt(0).toUpperCase() + status.slice(1)}
+        </Badge>
+      </CardContent>
+
+      {showActions && (
+        <CardFooter className="pt-4 gap-2">
+          <Button 
+            onClick={handleViewDetails} 
+            variant="outline"
+            className="flex items-center gap-2"
+            data-testid="button-view-details"
+          >
+            <Eye className="h-4 w-4" />
+            View Details
+          </Button>
+          
+          {type === 'internship' && status === 'open' && (
+            <Button 
+              onClick={onApply} 
+              className="flex-1"
+              data-testid="button-apply"
+            >
+              Apply Now
+            </Button>
+          )}
+          {type === 'candidate' && status === 'pending' && (
+            <>
+              <Button 
+                onClick={onAccept} 
+                variant="default" 
+                className="flex-1"
+                data-testid="button-accept"
+              >
+                Accept
+              </Button>
+              <Button 
+                onClick={onReject} 
+                variant="outline" 
+                className="flex-1"
+                data-testid="button-reject"
+              >
+                Reject
+              </Button>
+            </>
+          )}
+        </CardFooter>
+      )}
+    </Card>
+  );
+}
