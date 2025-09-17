@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import StudentDashboard from "./StudentDashboard";
-import { getStudentRecommendedInternships, getStudentApplications, me, updateStudentProfile } from "@/lib/api";
+import { getStudentRecommendedInternships, getStudentApplications, me, updateStudentProfile, uploadResume } from "@/lib/api";
 
 export default function StudentDashboardContainer() {
   const { data: auth } = useQuery({ queryKey: ["auth", "me"], queryFn: me });
@@ -42,6 +42,8 @@ export default function StudentDashboardContainer() {
       skills: auth.profile.skills || [],
       interests: auth.profile.interests || [],
       location: auth.profile.location || "",
+      resume: auth.profile.resume || undefined,
+      resumeFileName: auth.profile.resumeFileName || undefined,
     };
   }, [auth]);
 
@@ -59,6 +61,7 @@ export default function StudentDashboardContainer() {
       matchScore: i.matchScore,
       matchReasons: i.matchReasons || [],
       status: (i.status as "open" | "closed") || "open",
+      aiAnalysis: i.aiAnalysis,
     }));
   }, [internships]);
 
@@ -92,17 +95,28 @@ export default function StudentDashboardContainer() {
       onApplyToInternship={(id) => console.log('Apply to internship:', id)}
       onUpdateProfile={() => {}}
       onSaveProfile={async (payload) => {
-        await saveProfile({
-          name: payload.name,
-          university: payload.university,
-          major: payload.major,
-          graduationYear: payload.graduationYear,
-          gpa: payload.gpa,
-          skills: payload.skills,
-          interests: payload.interests,
-          location: payload.location,
-          resume: payload.resume,
-        });
+        try {
+          // Upload resume file first if provided
+          if (payload.resumeFile) {
+            await uploadResume(payload.resumeFile);
+          }
+          
+          // Then update profile with other data
+          await saveProfile({
+            name: payload.name,
+            university: payload.university,
+            major: payload.major,
+            graduationYear: payload.graduationYear,
+            gpa: payload.gpa,
+            skills: payload.skills,
+            interests: payload.interests,
+            location: payload.location,
+            resume: payload.resume,
+          });
+        } catch (error) {
+          console.error('Error saving profile:', error);
+          throw error;
+        }
       }}
     />
   );

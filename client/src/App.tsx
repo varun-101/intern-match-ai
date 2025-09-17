@@ -9,6 +9,7 @@ import LandingPage from "@/pages/landing";
 import AuthPage from "@/pages/auth";
 import PostInternshipPage from "@/pages/post-internship";
 import InternshipDetailsPage from "@/pages/internship-details";
+import EmployerInternshipDetailsPage from "@/pages/employer-internship-details";
 import StudentDetailsPage from "@/pages/student-details";
 import NotFound from "@/pages/not-found";
 
@@ -28,6 +29,7 @@ function Router() {
       <Route path="/post-internship" component={PostInternshipPage} />
       {/* Detail pages */}
       <Route path="/internship/:id" component={InternshipDetailsPage} />
+      <Route path="/employer/internship/:id" component={EmployerInternshipDetailsPage} />
       <Route path="/student/:id" component={StudentDetailsPage} />
       {/* Fallback to 404 */}
       <Route component={NotFound} />

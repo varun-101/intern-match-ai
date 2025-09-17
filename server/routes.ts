@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import bcrypt from "bcrypt";
 import { insertUserSchema, insertStudentSchema, insertEmployerSchema, UserRole } from "@shared/schema";
 import { z } from "zod";
+import { upload, processUploadedFile, deleteFile } from "./fileProcessor";
 
 // Custom request interface for authenticated routes
 interface AuthRequest extends Request {
@@ -332,6 +333,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get internship details for employer
+  app.get("/api/employer/internships/:id", async (req: Request, res: Response) => {
+    try {
+      const user = req.session.user;
+      if (!user || user.role !== "employer") {
+        return res.status(401).json({ error: "Not authenticated as employer" });
+      }
+
+      const { id } = req.params;
+      const employer = await storage.getEmployer(user.id);
+      if (!employer) {
+        return res.status(404).json({ error: "Employer profile not found" });
+      }
+
+      // Get internship details with applications
+      const internship = await storage.getInternshipById(id);
+      if (!internship) {
+        return res.status(404).json({ error: "Internship not found" });
+      }
+
+      // Verify this internship belongs to the employer
+      if (internship.employerId !== employer.id) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Get applications for this internship
+      const applications = await storage.getApplications({ internshipId: id });
+      
+      // Get employer info
+      const employerInfo = await storage.getEmployerById(employer.id);
+
+      res.json({
+        ...internship,
+        applications,
+        employer: employerInfo
+      });
+    } catch (error) {
+      console.error('Get internship details error:', error);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
   // Student data routes
   app.get("/api/student/recommended-internships", async (req: Request, res: Response) => {
     try {
@@ -382,6 +425,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
     resume: z.string().url().optional(),
   });
 
+  // Resume upload endpoint
+  app.post("/api/student/upload-resume", upload.single('resume'), async (req: Request, res: Response) => {
+    try {
+      const user = req.session.user;
+      if (!user || user.role !== "student") {
+        return res.status(401).json({ error: "Not authenticated as student" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      // Process the uploaded file
+      const processedFile = await processUploadedFile(req.file);
+      
+      // Update student record with resume information
+      const student = await storage.getStudent(user.id);
+      if (!student) {
+        // Clean up uploaded file if student not found
+        await deleteFile(processedFile.path);
+        return res.status(404).json({ error: "Student profile not found" });
+      }
+
+      // Clean up old resume file if exists
+      if (student.resume) {
+        await deleteFile(student.resume);
+      }
+
+      // Update student with new resume info
+      const updatedStudent = await storage.updateStudent(user.id, {
+        resume: processedFile.path,
+        resumeFileName: processedFile.originalName,
+        resumeText: processedFile.sanitizedText
+      });
+
+      res.json({
+        success: true,
+        resume: {
+          filename: processedFile.originalName,
+          size: processedFile.size,
+          uploadedAt: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      console.error('Resume upload error:', error);
+      
+      // Clean up file on error
+      if (req.file) {
+        await deleteFile(req.file.path);
+      }
+      
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to upload resume" 
+      });
+    }
+  });
+
   app.put("/api/student/profile", async (req: Request, res: Response) => {
     try {
       const user = (req as AuthRequest).user || req.session.user;
@@ -424,6 +524,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Update student profile error:', error);
       res.status(400).json({ error: error instanceof Error ? error.message : "Failed to update profile" });
+    }
+  });
+
+  // Test AI matching endpoint
+  app.post("/api/test/ai-match", async (req: Request, res: Response) => {
+    try {
+      const { student, internship } = req.body;
+      
+      // Import and test AI service
+      const { aiService } = await import("./aiService");
+      
+      const analysis = await aiService.analyzeMatch({ student, internship });
+      
+      res.json({
+        success: true,
+        analysis
+      });
+    } catch (error) {
+      console.error('AI test error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "AI test failed" 
+      });
     }
   });
 

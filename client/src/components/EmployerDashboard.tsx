@@ -20,6 +20,24 @@ interface PostedInternship {
   deadline: string;
 }
 
+interface AIAnalysis {
+  overallMatch: number;
+  confidence: number;
+  keyStrengths: string[];
+  potentialConcerns: string[];
+  skillGaps: string[];
+  careerImpact: string;
+  employerBenefits: string[];
+  actionableAdvice: string[];
+  breakdown: {
+    skillsMatch: number;
+    experienceMatch: number;
+    locationMatch: number;
+    cultureMatch: number;
+    careerFitMatch: number;
+  };
+}
+
 interface RecommendedCandidate {
   id: string;
   name: string;
@@ -31,6 +49,7 @@ interface RecommendedCandidate {
   matchReasons: string[];
   status: 'pending' | 'accepted' | 'rejected';
   internshipId: string;
+  aiAnalysis?: AIAnalysis;
 }
 
 interface EmployerDashboardProps {
@@ -314,6 +333,7 @@ export default function EmployerDashboard({
                     status={candidate.status}
                     onAccept={() => onAcceptCandidate?.(candidate.id)}
                     onReject={() => onRejectCandidate?.(candidate.id)}
+                    aiAnalysis={candidate.aiAnalysis}
                   />
                 </div>
               </div>

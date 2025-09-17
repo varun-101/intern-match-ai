@@ -44,9 +44,14 @@ export const students = pgTable("students", {
   interests: text("interests").array(),
   gpa: text("gpa"),
   resume: text("resume_url"),
+  resumeFileName: text("resume_file_name"),
+  resumeText: text("resume_text"), // Extracted text content for AI processing
   location: text("location").notNull().default('India'),
   preferences: jsonb("preferences"),
 });
+// SQL QUERY TO ALTER THE TABLE TO ADD THE RESUME FILE NAME AND RESUME TEXT
+// ALTER TABLE students ADD COLUMN resume_file_name TEXT;
+// ALTER TABLE students ADD COLUMN resume_text TEXT;
 
 // Employers table
 export const employers = pgTable("employers", {
@@ -96,13 +101,39 @@ export const aiMatches = pgTable("ai_matches", {
   studentId: varchar("student_id").notNull(),
   internshipId: varchar("internship_id").notNull(),
   matchScore: integer("match_score").notNull(),
+  confidence: integer("confidence"),
+  keyStrengths: text("key_strengths").array(),
+  potentialConcerns: text("potential_concerns").array(),
+  skillGaps: text("skill_gaps").array(),
+  careerImpact: text("career_impact"),
+  employerBenefits: text("employer_benefits").array(),
+  actionableAdvice: text("actionable_advice").array(),
+  // Breakdown scores
   skillsMatch: integer("skills_match"),
-  interestsMatch: integer("interests_match"),
+  experienceMatch: integer("experience_match"),
   locationMatch: integer("location_match"),
+  cultureMatch: integer("culture_match"),
+  careerFitMatch: integer("career_fit_match"),
+  // Legacy fields
+  interestsMatch: integer("interests_match"),
   reasons: text("reasons").array(),
   recommendationRank: integer("recommendation_rank"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+// SQL QUERY TO ALTER THE TABLE TO ADD THE NEW FIELDS
+// ALTER TABLE ai_matches ADD COLUMN confidence INTEGER;
+// ALTER TABLE ai_matches ADD COLUMN key_strengths TEXT[];
+// ALTER TABLE ai_matches ADD COLUMN potential_concerns TEXT[];
+// ALTER TABLE ai_matches ADD COLUMN skill_gaps TEXT[];
+// ALTER TABLE ai_matches ADD COLUMN career_impact TEXT;
+// ALTER TABLE ai_matches ADD COLUMN employer_benefits TEXT[];
+// ALTER TABLE ai_matches ADD COLUMN actionable_advice TEXT[];
+// ALTER TABLE ai_matches ADD COLUMN experience_match INTEGER;
+// ALTER TABLE ai_matches ADD COLUMN location_match INTEGER;
+// ALTER TABLE ai_matches ADD COLUMN culture_match INTEGER;
+// ALTER TABLE ai_matches ADD COLUMN career_fit_match INTEGER;
+// ALTER TABLE ai_matches ADD COLUMN reasons TEXT[];
+// ALTER TABLE ai_matches ADD COLUMN recommendation_rank INTEGER;
 
 // Create insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });

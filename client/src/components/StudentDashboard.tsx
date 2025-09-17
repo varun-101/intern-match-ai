@@ -6,10 +6,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import MatchCard from "./MatchCard";
 import ApplicationTracker from "./ApplicationTracker";
 import MetricsCard from "./MetricsCard";
-import { Search, User, GraduationCap, MapPin, Star } from "lucide-react";
+import { Search, User, GraduationCap, MapPin, Star, Upload, FileText, X } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 
 interface StudentProfile {
   id: string;
@@ -22,6 +22,26 @@ interface StudentProfile {
   skills: string[];
   interests: string[];
   location: string;
+  resume?: string; // URL or file path
+  resumeFileName?: string;
+}
+
+interface AIAnalysis {
+  overallMatch: number;
+  confidence: number;
+  keyStrengths: string[];
+  potentialConcerns: string[];
+  skillGaps: string[];
+  careerImpact: string;
+  employerBenefits: string[];
+  actionableAdvice: string[];
+  breakdown: {
+    skillsMatch: number;
+    experienceMatch: number;
+    locationMatch: number;
+    cultureMatch: number;
+    careerFitMatch: number;
+  };
 }
 
 interface RecommendedInternship {
@@ -35,6 +55,7 @@ interface RecommendedInternship {
   matchScore: number;
   matchReasons: string[];
   status: 'open' | 'closed';
+  aiAnalysis?: AIAnalysis;
 }
 
 interface StudentDashboardProps {
@@ -47,6 +68,7 @@ interface StudentDashboardProps {
     skills?: string[];
     interests?: string[];
     resume?: string;
+    resumeFile?: File;
   }) => Promise<void> | void;
 }
 
@@ -59,6 +81,10 @@ export default function StudentDashboard({
   onSaveProfile
 }: StudentDashboardProps) {
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [resumeUploading, setResumeUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const [form, setForm] = useState(() => ({
     name: profile.name || "",
     university: profile.university || "",
@@ -68,12 +94,42 @@ export default function StudentDashboard({
     skills: (profile.skills || []).join(", "),
     interests: (profile.interests || []).join(", "),
     location: profile.location || "",
-    resume: "",
   }));
 
   const canSave = useMemo(() => {
     return form.name.trim().length >= 2 && form.university.trim() && form.major.trim();
   }, [form]);
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+      if (!allowedTypes.includes(file.type)) {
+        alert('Please upload only PDF, DOC, or DOCX files');
+        return;
+      }
+      
+      // Validate file size (5MB limit)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size must be less than 5MB');
+        return;
+      }
+      
+      setResumeFile(file);
+    }
+  };
+
+  const handleRemoveFile = () => {
+    setResumeFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const triggerFileUpload = () => {
+    fileInputRef.current?.click();
+  };
 
   const activeApplications = applications.filter(app => app.status === 'pending').length;
   const acceptedApplications = applications.filter(app => app.status === 'accepted').length;
@@ -175,6 +231,16 @@ export default function StudentDashboard({
                   )}
                 </div>
               </div>
+
+              {profile.resume && (
+                <div>
+                  <p className="text-sm font-medium mb-2">Resume</p>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <FileText className="h-4 w-4" />
+                    <span>{profile.resumeFileName || 'Resume uploaded'}</span>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -218,6 +284,7 @@ export default function StudentDashboard({
                 skills={internship.skills}
                 status={internship.status}
                 onApply={() => onApplyToInternship?.(internship.id)}
+                aiAnalysis={internship.aiAnalysis}
               />
             ))}
           </div>
@@ -273,31 +340,94 @@ export default function StudentDashboard({
               <Input id="location" className="col-span-3" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="resume" className="text-right">Resume URL</Label>
-              <Input id="resume" className="col-span-3" value={form.resume} onChange={(e) => setForm({ ...form, resume: e.target.value })} />
+              <Label htmlFor="resume" className="text-right">Resume</Label>
+              <div className="col-span-3 space-y-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                
+                {resumeFile ? (
+                  <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
+                    <FileText className="h-4 w-4 text-green-600" />
+                    <span className="text-sm flex-1">{resumeFile.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {(resumeFile.size / 1024 / 1024).toFixed(1)}MB
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleRemoveFile}
+                      className="h-6 w-6 p-0"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : profile.resume ? (
+                  <div className="flex items-center gap-2 p-2 border rounded-md">
+                    <FileText className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm flex-1">{profile.resumeFileName || 'Current resume'}</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={triggerFileUpload}
+                    >
+                      Replace
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={triggerFileUpload}
+                    className="w-full"
+                    disabled={resumeUploading}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    {resumeUploading ? 'Uploading...' : 'Upload Resume'}
+                  </Button>
+                )}
+                
+                <p className="text-xs text-muted-foreground">
+                  Supported formats: PDF, DOC, DOCX (Max 5MB)
+                </p>
+              </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
             <Button
               onClick={async () => {
-                const payload = {
-                  name: form.name,
-                  university: form.university,
-                  major: form.major,
-                  graduationYear: form.graduationYear,
-                  gpa: form.gpa || undefined,
-                  skills: form.skills.split(',').map(s => s.trim()).filter(Boolean),
-                  interests: form.interests.split(',').map(s => s.trim()).filter(Boolean),
-                  location: form.location || undefined,
-                  resume: form.resume || undefined,
-                };
-                await onSaveProfile?.(payload);
-                setIsEditOpen(false);
+                try {
+                  setResumeUploading(true);
+                  const payload = {
+                    name: form.name,
+                    university: form.university,
+                    major: form.major,
+                    graduationYear: form.graduationYear,
+                    gpa: form.gpa || undefined,
+                    skills: form.skills.split(',').map(s => s.trim()).filter(Boolean),
+                    interests: form.interests.split(',').map(s => s.trim()).filter(Boolean),
+                    location: form.location || undefined,
+                    resumeFile: resumeFile || undefined,
+                  };
+                  await onSaveProfile?.(payload);
+                  setIsEditOpen(false);
+                  setResumeFile(null);
+                } catch (error) {
+                  console.error('Error saving profile:', error);
+                } finally {
+                  setResumeUploading(false);
+                }
               }}
-              disabled={!canSave}
+              disabled={!canSave || resumeUploading}
             >
-              Save
+              {resumeUploading ? 'Saving...' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>

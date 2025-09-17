@@ -72,6 +72,7 @@ export interface InternshipWithEmployer {
     id: string;
     companyName: string;
   };
+  aiAnalysis?: any;
 }
 
 export async function getEmployerInternships() {
@@ -90,6 +91,7 @@ export interface RecommendedCandidate {
   matchScore: number;
   matchReasons: string[];
   internshipId: string;
+  aiAnalysis?: any;
 }
 
 export async function getEmployerRecommendedCandidates() {
@@ -117,6 +119,53 @@ export async function createInternship(payload: CreateInternshipPayload) {
   return data;
 }
 
+export interface EmployerInternshipDetails {
+  id: string;
+  title: string;
+  description: string;
+  location: string;
+  duration: string;
+  stipend?: string;
+  requirements: string[];
+  skills: string[];
+  status: string;
+  maxApplications: number;
+  currentApplications: number;
+  createdAt: string;
+  deadline: string;
+  applications: Array<{
+    id: string;
+    status: string;
+    appliedAt: string;
+    aiMatchScore?: number;
+    matchReasons?: string[];
+    student: {
+      id: string;
+      university: string;
+      major: string;
+      skills: string[];
+      gpa?: string;
+      location: string;
+    };
+    internship: {
+      id: string;
+      title: string;
+    };
+  }>;
+  employer: {
+    id: string;
+    companyName: string;
+    industry: string;
+    location: string;
+    description?: string;
+  };
+}
+
+export async function getEmployerInternshipDetails(id: string) {
+  const { data } = await api.get(`/employer/internships/${id}`);
+  return data as EmployerInternshipDetails;
+}
+
 // Student API functions
 export interface StudentRecommendedInternship {
   id: string;
@@ -132,6 +181,7 @@ export interface StudentRecommendedInternship {
     id: string;
     companyName: string;
   };
+  aiAnalysis?: any;
 }
 
 export interface StudentApplication {
@@ -146,6 +196,7 @@ export interface StudentApplication {
       companyName: string;
     };
   };
+  aiAnalysis?: any;
 }
 
 export async function getStudentRecommendedInternships() {
@@ -174,6 +225,18 @@ export interface UpdateStudentProfilePayload {
 export async function updateStudentProfile(payload: UpdateStudentProfilePayload) {
   const { data } = await api.put("/student/profile", payload);
   return data as { success: boolean; user: AuthUser; profile: any };
+}
+
+export async function uploadResume(file: File) {
+  const formData = new FormData();
+  formData.append('resume', file);
+  
+  const { data } = await api.post("/student/upload-resume", formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return data as { success: boolean; resume: { filename: string; size: number; uploadedAt: string } };
 }
 
 

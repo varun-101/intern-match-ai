@@ -43,6 +43,7 @@ export default function EmployerDashboardContainer() {
       matchReasons: c.matchReasons || [],
       status: "pending" as const,
       internshipId: c.internshipId,
+      aiAnalysis: c.aiAnalysis,
     }));
   }, [candidates]);
 
@@ -52,6 +53,7 @@ export default function EmployerDashboardContainer() {
       postedInternships={postedInternships}
       recommendedCandidates={recommendedCandidates}
       onCreateInternship={() => setLocation("/post-internship")}
+      onViewInternship={(internshipId) => setLocation(`/employer/internship/${internshipId}`)}
     />
   );
 }

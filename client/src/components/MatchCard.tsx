@@ -3,8 +3,28 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { HelpCircle, MapPin, Calendar, DollarSign, Building, Eye } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { HelpCircle, MapPin, Calendar, DollarSign, Building, Eye, ChevronDown, Brain, Target, AlertTriangle, Lightbulb, TrendingUp } from "lucide-react";
 import { useLocation } from "wouter";
+import { useState } from "react";
+
+interface AIAnalysis {
+  overallMatch: number;
+  confidence: number;
+  keyStrengths: string[];
+  potentialConcerns: string[];
+  skillGaps: string[];
+  careerImpact: string;
+  employerBenefits: string[];
+  actionableAdvice: string[];
+  breakdown: {
+    skillsMatch: number;
+    experienceMatch: number;
+    locationMatch: number;
+    cultureMatch: number;
+    careerFitMatch: number;
+  };
+}
 
 interface MatchCardProps {
   id: string;
@@ -24,6 +44,7 @@ interface MatchCardProps {
   type: 'internship' | 'candidate';
   candidateName?: string;
   university?: string;
+  aiAnalysis?: AIAnalysis;
 }
 
 export default function MatchCard({
@@ -43,9 +64,11 @@ export default function MatchCard({
   showActions = true,
   type,
   candidateName,
-  university
+  university,
+  aiAnalysis
 }: MatchCardProps) {
   const [, setLocation] = useLocation();
+  const [showAIDetails, setShowAIDetails] = useState(false);
   const getScoreColor = (score: number) => {
     if (score >= 80) return "text-green-600";
     if (score >= 60) return "text-yellow-600";
@@ -149,6 +172,116 @@ export default function MatchCard({
         <Badge className={getStatusColor(status)} data-testid="badge-status">
           {status.charAt(0).toUpperCase() + status.slice(1)}
         </Badge>
+
+        {/* AI Insights Section */}
+        {aiAnalysis && (
+          <Collapsible open={showAIDetails} onOpenChange={setShowAIDetails}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" className="w-full justify-between p-2 h-auto">
+                <div className="flex items-center gap-2">
+                  <Brain className="h-4 w-4 text-blue-600" />
+                  <span className="text-sm font-medium">AI Insights</span>
+                  <Badge variant="outline" className="text-xs">
+                    {aiAnalysis.confidence}% confidence
+                  </Badge>
+                </div>
+                <ChevronDown className={`h-4 w-4 transition-transform ${showAIDetails ? 'rotate-180' : ''}`} />
+              </Button>
+            </CollapsibleTrigger>
+            
+            <CollapsibleContent className="space-y-3 pt-3">
+              {/* Match Breakdown */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Match Breakdown</h4>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="flex justify-between">
+                    <span>Skills:</span>
+                    <span className={getScoreColor(aiAnalysis.breakdown.skillsMatch)}>{aiAnalysis.breakdown.skillsMatch}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Experience:</span>
+                    <span className={getScoreColor(aiAnalysis.breakdown.experienceMatch)}>{aiAnalysis.breakdown.experienceMatch}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Location:</span>
+                    <span className={getScoreColor(aiAnalysis.breakdown.locationMatch)}>{aiAnalysis.breakdown.locationMatch}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Culture:</span>
+                    <span className={getScoreColor(aiAnalysis.breakdown.cultureMatch)}>{aiAnalysis.breakdown.cultureMatch}%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Key Strengths */}
+              {aiAnalysis.keyStrengths.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1">
+                    <Target className="h-3 w-3 text-green-600" />
+                    <h4 className="text-xs font-medium text-green-600">Key Strengths</h4>
+                  </div>
+                  <ul className="text-xs space-y-1 text-muted-foreground">
+                    {aiAnalysis.keyStrengths.slice(0, 3).map((strength, index) => (
+                      <li key={index} className="flex items-start gap-1">
+                        <span className="text-green-600 mt-0.5">•</span>
+                        <span>{strength}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Concerns */}
+              {aiAnalysis.potentialConcerns.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3 text-yellow-600" />
+                    <h4 className="text-xs font-medium text-yellow-600">Considerations</h4>
+                  </div>
+                  <ul className="text-xs space-y-1 text-muted-foreground">
+                    {aiAnalysis.potentialConcerns.slice(0, 2).map((concern, index) => (
+                      <li key={index} className="flex items-start gap-1">
+                        <span className="text-yellow-600 mt-0.5">•</span>
+                        <span>{concern}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Actionable Advice */}
+              {aiAnalysis.actionableAdvice.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1">
+                    <Lightbulb className="h-3 w-3 text-blue-600" />
+                    <h4 className="text-xs font-medium text-blue-600">Recommendations</h4>
+                  </div>
+                  <ul className="text-xs space-y-1 text-muted-foreground">
+                    {aiAnalysis.actionableAdvice.slice(0, 2).map((advice, index) => (
+                      <li key={index} className="flex items-start gap-1">
+                        <span className="text-blue-600 mt-0.5">•</span>
+                        <span>{advice}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Career Impact */}
+              {aiAnalysis.careerImpact && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1">
+                    <TrendingUp className="h-3 w-3 text-purple-600" />
+                    <h4 className="text-xs font-medium text-purple-600">Career Impact</h4>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {aiAnalysis.careerImpact}
+                  </p>
+                </div>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
       </CardContent>
 
       {showActions && (

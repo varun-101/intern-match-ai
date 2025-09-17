@@ -2,6 +2,7 @@ import { users, students, employers, internships, applications, aiMatches, type 
 import { randomUUID } from "crypto";
 import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
+import { aiService, type DeepSeekMatchRequest } from "./aiService";
 
 // Interface for all storage operations
 export interface IStorage {
@@ -25,7 +26,17 @@ export interface IStorage {
   createInternship(internship: InsertInternship): Promise<Internship>;
   getInternships(filters?: { status?: string; employerId?: string }): Promise<InternshipWithEmployer[]>;
   getInternship(id: string): Promise<InternshipWithEmployer | undefined>;
+  getInternshipById(id: string): Promise<Internship | undefined>;
   updateInternship(id: string, updates: Partial<InsertInternship>): Promise<Internship>;
+  
+  // Employer operations extended
+  getEmployerById(id: string): Promise<Employer | undefined>;
+  
+  // AI matching operations
+  saveAIMatchAnalysis(studentId: string, internshipId: string, analysis: any): Promise<void>;
+  getCachedAIAnalysis(studentId: string, internshipId: string): Promise<any | null>;
+  invalidateStudentCache(studentId: string): Promise<void>;
+  invalidateInternshipCache(internshipId: string): Promise<void>;
   
   // Application operations
   createApplication(application: InsertApplication): Promise<Application>;
@@ -97,6 +108,34 @@ export class MemStorage implements IStorage {
 
   async getInternship(id: string): Promise<InternshipWithEmployer | undefined> {
     return undefined;
+  }
+
+  async getInternshipById(id: string): Promise<Internship | undefined> {
+    return undefined;
+  }
+
+  async getEmployerById(id: string): Promise<Employer | undefined> {
+    return undefined;
+  }
+
+  async saveAIMatchAnalysis(studentId: string, internshipId: string, analysis: any): Promise<void> {
+    // Not implemented in memory storage
+    return;
+  }
+
+  async getCachedAIAnalysis(studentId: string, internshipId: string): Promise<any | null> {
+    // Not implemented in memory storage
+    return null;
+  }
+
+  async invalidateStudentCache(studentId: string): Promise<void> {
+    // Not implemented in memory storage
+    return;
+  }
+
+  async invalidateInternshipCache(internshipId: string): Promise<void> {
+    // Not implemented in memory storage
+    return;
   }
 
   async updateInternship(id: string, updates: Partial<InsertInternship>): Promise<Internship> {
@@ -180,6 +219,10 @@ export class DatabaseStorage implements IStorage {
 
   async updateStudent(userId: string, updates: Partial<InsertStudent>): Promise<Student> {
     const [student] = await db.update(students).set(updates).where(eq(students.userId, userId)).returning();
+    
+    // Invalidate AI cache when student profile is updated
+    await this.invalidateStudentCache(userId);
+    
     return student;
   }
 
@@ -238,7 +281,122 @@ export class DatabaseStorage implements IStorage {
 
   async updateInternship(id: string, updates: Partial<InsertInternship>): Promise<Internship> {
     const [internship] = await db.update(internships).set(updates).where(eq(internships.id, id)).returning();
+    
+    // Invalidate AI cache when internship is updated
+    await this.invalidateInternshipCache(id);
+    
     return internship;
+  }
+
+  async getInternshipById(id: string): Promise<Internship | undefined> {
+    const [internship] = await db.select().from(internships).where(eq(internships.id, id));
+    return internship;
+  }
+
+  async getEmployerById(id: string): Promise<Employer | undefined> {
+    const [employer] = await db.select().from(employers).where(eq(employers.id, id));
+    return employer;
+  }
+
+  async saveAIMatchAnalysis(studentId: string, internshipId: string, analysis: any): Promise<void> {
+    try {
+      // Check if analysis already exists and update, otherwise insert
+      const existingAnalysis = await this.getCachedAIAnalysis(studentId, internshipId);
+      
+      const analysisData = {
+        studentId,
+        internshipId,
+        matchScore: analysis.overallMatch,
+        confidence: analysis.confidence,
+        keyStrengths: analysis.keyStrengths || [],
+        potentialConcerns: analysis.potentialConcerns || [],
+        skillGaps: analysis.skillGaps || [],
+        careerImpact: analysis.careerImpact,
+        employerBenefits: analysis.employerBenefits || [],
+        actionableAdvice: analysis.actionableAdvice || [],
+        skillsMatch: analysis.breakdown?.skillsMatch,
+        experienceMatch: analysis.breakdown?.experienceMatch,
+        locationMatch: analysis.breakdown?.locationMatch,
+        cultureMatch: analysis.breakdown?.cultureMatch,
+        careerFitMatch: analysis.breakdown?.careerFitMatch,
+        reasons: analysis.keyStrengths || [], // Legacy field
+      };
+
+      if (existingAnalysis) {
+        // Update existing record
+        await db.update(aiMatches)
+          .set(analysisData)
+          .where(and(
+            eq(aiMatches.studentId, studentId),
+            eq(aiMatches.internshipId, internshipId)
+          ));
+      } else {
+        // Insert new record
+        await db.insert(aiMatches).values(analysisData);
+      }
+    } catch (error) {
+      console.error('Error saving AI match analysis:', error);
+      // Don't throw - this is supplementary data
+    }
+  }
+
+  async getCachedAIAnalysis(studentId: string, internshipId: string): Promise<any | null> {
+    try {
+      const [cachedAnalysis] = await db.select()
+        .from(aiMatches)
+        .where(and(
+          eq(aiMatches.studentId, studentId),
+          eq(aiMatches.internshipId, internshipId)
+        ))
+        .orderBy(desc(aiMatches.createdAt))
+        .limit(1);
+
+      if (!cachedAnalysis) {
+        return null;
+      }
+
+      // Convert database format back to analysis format
+      return {
+        overallMatch: cachedAnalysis.matchScore,
+        confidence: cachedAnalysis.confidence || 80,
+        keyStrengths: cachedAnalysis.keyStrengths || [],
+        potentialConcerns: cachedAnalysis.potentialConcerns || [],
+        skillGaps: cachedAnalysis.skillGaps || [],
+        careerImpact: cachedAnalysis.careerImpact || '',
+        employerBenefits: cachedAnalysis.employerBenefits || [],
+        actionableAdvice: cachedAnalysis.actionableAdvice || [],
+        breakdown: {
+          skillsMatch: cachedAnalysis.skillsMatch || 50,
+          experienceMatch: cachedAnalysis.experienceMatch || 50,
+          locationMatch: cachedAnalysis.locationMatch || 50,
+          cultureMatch: cachedAnalysis.cultureMatch || 50,
+          careerFitMatch: cachedAnalysis.careerFitMatch || 50
+        }
+      };
+    } catch (error) {
+      console.error('Error retrieving cached AI analysis:', error);
+      return null;
+    }
+  }
+
+  async invalidateStudentCache(studentId: string): Promise<void> {
+    try {
+      // Delete all cached analyses for this student
+      await db.delete(aiMatches).where(eq(aiMatches.studentId, studentId));
+      console.log(`Invalidated AI cache for student ${studentId}`);
+    } catch (error) {
+      console.error('Error invalidating student cache:', error);
+    }
+  }
+
+  async invalidateInternshipCache(internshipId: string): Promise<void> {
+    try {
+      // Delete all cached analyses for this internship
+      await db.delete(aiMatches).where(eq(aiMatches.internshipId, internshipId));
+      console.log(`Invalidated AI cache for internship ${internshipId}`);
+    } catch (error) {
+      console.error('Error invalidating internship cache:', error);
+    }
   }
 
   // Application operations
@@ -277,69 +435,125 @@ export class DatabaseStorage implements IStorage {
     return application;
   }
 
-  // AI matching operations - simplified for now
+  // AI matching operations with DeepSeek integration
   async getRecommendedInternships(studentId: string, limit = 10): Promise<(InternshipWithEmployer & { matchScore: number; matchReasons: string[] })[]> {
     // Get student profile
     const student = await this.getStudent(studentId);
     console.log("getRecommendedInternships", {student});
     if (!student) return [];
 
+    // Get user info for student name
+    const user = await this.getUser(studentId);
+    if (!user) return [];
+
     // Get open internships
     const openInternships = await this.getInternships({ status: 'open' });
     
-    // Simple matching algorithm - can be enhanced later
-    const matches = openInternships.map(internship => {
-      let score = 50; // Base score
-      const reasons: string[] = [];
+    // Use AI matching for each internship
+    const aiMatches = await Promise.all(
+      openInternships.map(async (internship) => {
+        try {
+          // Check if we have cached analysis first
+          const cachedAnalysis = await this.getCachedAIAnalysis(studentId, internship.id);
+          
+          if (cachedAnalysis) {
+            console.log(`Using cached AI analysis for student ${studentId} and internship ${internship.id}`);
+            return {
+              ...internship,
+              matchScore: cachedAnalysis.overallMatch,
+              matchReasons: cachedAnalysis.keyStrengths.slice(0, 4),
+              aiAnalysis: cachedAnalysis
+            };
+          }
 
-      // Skill matching
-      if (student.skills && internship.skills) {
-        const studentSkills = student.skills.map(s => s.toLowerCase());
-        const internshipSkills = internship.skills.map(s => s.toLowerCase());
-        const matchingSkills = studentSkills.filter(skill => 
-          internshipSkills.some(reqSkill => reqSkill.includes(skill) || skill.includes(reqSkill))
-        );
-        
-        if (matchingSkills.length > 0) {
-          score += matchingSkills.length * 10;
-          reasons.push(`Skills match: ${matchingSkills.slice(0, 3).join(', ')}`);
+          console.log(`Generating new AI analysis for student ${studentId} and internship ${internship.id}`);
+          
+          const matchRequest: DeepSeekMatchRequest = {
+            student: {
+              name: user.name,
+              university: student.university,
+              major: student.major,
+              graduationYear: student.graduationYear,
+              gpa: student.gpa || undefined,
+              skills: student.skills || [],
+              interests: student.interests || [],
+              location: student.location,
+              resumeText: student.resumeText || undefined,
+            },
+            internship: {
+              title: internship.title,
+              description: internship.description,
+              requirements: internship.requirements || [],
+              skills: internship.skills || [],
+              location: internship.location,
+              duration: internship.duration,
+              stipend: internship.stipend || undefined,
+              company: {
+                name: internship.employer.companyName,
+                industry: internship.employer.industry,
+                description: internship.employer.description || undefined,
+              }
+            }
+          };
+
+          const aiAnalysis = await aiService.analyzeMatch(matchRequest);
+          
+          // Save AI analysis to database for future use
+          await this.saveAIMatchAnalysis(studentId, internship.id, aiAnalysis);
+          
+          return {
+            ...internship,
+            matchScore: aiAnalysis.overallMatch,
+            matchReasons: aiAnalysis.keyStrengths.slice(0, 4),
+            aiAnalysis // Include full analysis for UI
+          };
+        } catch (error) {
+          console.error(`AI analysis failed for internship ${internship.id}:`, error);
+          
+          // Fallback to basic matching if AI fails
+          return this.basicMatch(student, internship);
         }
-      }
-
-      // Interest matching
-      if (student.interests && internship.skills) {
-        const studentInterests = student.interests.map(i => i.toLowerCase());
-        const internshipSkills = internship.skills.map(s => s.toLowerCase());
-        const matchingInterests = studentInterests.filter(interest => 
-          internshipSkills.some(skill => skill.includes(interest) || interest.includes(skill))
-        );
-        
-        if (matchingInterests.length > 0) {
-          score += matchingInterests.length * 8;
-          reasons.push(`Interests align with role requirements`);
-        }
-      }
-
-      // Graduation year consideration
-      if (student.graduationYear && student.graduationYear <= 2025) {
-        score += 15;
-        reasons.push('Graduation timeline matches internship duration');
-      }
-
-      // Ensure score is within bounds
-      score = Math.min(100, Math.max(0, score));
-
-      return {
-        ...internship,
-        matchScore: score,
-        matchReasons: reasons.slice(0, 4)
-      };
-    });
+      })
+    );
 
     // Sort by match score and return top results
-    return matches
+    return aiMatches
       .sort((a, b) => b.matchScore - a.matchScore)
       .slice(0, limit);
+  }
+
+  // Fallback basic matching algorithm
+  private basicMatch(student: any, internship: any) {
+    let score = 50;
+    const reasons: string[] = [];
+
+    // Skill matching
+    if (student.skills && internship.skills) {
+      const studentSkills = student.skills.map((s: string) => s.toLowerCase());
+      const internshipSkills = internship.skills.map((s: string) => s.toLowerCase());
+      const matchingSkills = studentSkills.filter((skill: string) => 
+        internshipSkills.some((reqSkill: string) => reqSkill.includes(skill) || skill.includes(reqSkill))
+      );
+      
+      if (matchingSkills.length > 0) {
+        score += matchingSkills.length * 10;
+        reasons.push(`Skills match: ${matchingSkills.slice(0, 3).join(', ')}`);
+      }
+    }
+
+    // Graduation year consideration
+    if (student.graduationYear && student.graduationYear <= 2025) {
+      score += 15;
+      reasons.push('Graduation timeline matches internship duration');
+    }
+
+    score = Math.min(100, Math.max(0, score));
+
+    return {
+      ...internship,
+      matchScore: score,
+      matchReasons: reasons.slice(0, 4)
+    };
   }
 
   async getRecommendedCandidates(internshipId: string, limit = 10): Promise<(Student & { matchScore: number; matchReasons: string[] })[]> {
@@ -350,57 +564,125 @@ export class DatabaseStorage implements IStorage {
     // Get all students (simplified - in production would filter better)
     const allStudents = await db.select().from(students).leftJoin(users, eq(students.userId, users.id));
     console.log({allStudents});
-    // Simple matching algorithm
-    const matches = allStudents.map(student => {
-      let score = 50; // Base score
-      const reasons: string[] = [];
+    
+    // Use AI matching for each candidate
+    const aiMatches = await Promise.all(
+      allStudents.map(async (studentRecord) => {
+        try {
+          const student = studentRecord.students;
+          const user = studentRecord.users!;
+          
+          // Check if we have cached analysis first
+          const cachedAnalysis = await this.getCachedAIAnalysis(student.userId, internshipId);
+          
+          if (cachedAnalysis) {
+            console.log(`Using cached AI analysis for student ${student.userId} and internship ${internshipId}`);
+            return {
+              ...student,
+              user,
+              matchScore: cachedAnalysis.overallMatch,
+              matchReasons: cachedAnalysis.keyStrengths.slice(0, 4),
+              aiAnalysis: cachedAnalysis
+            };
+          }
 
-      // Skill matching
-      if (student.students.skills && internship.skills) {
-        const studentSkills = student.students.skills.map(s => s.toLowerCase());
-        const internshipSkills = internship.skills.map(s => s.toLowerCase());
-        const matchingSkills = studentSkills.filter(skill => 
-          internshipSkills.some(reqSkill => reqSkill.includes(skill) || skill.includes(reqSkill))
-        );
-        
-        if (matchingSkills.length > 0) {
-          score += matchingSkills.length * 12;
-          reasons.push(`Strong skills match: ${matchingSkills.slice(0, 3).join(', ')}`);
+          console.log(`Generating new AI analysis for student ${student.userId} and internship ${internshipId}`);
+          
+          const matchRequest: DeepSeekMatchRequest = {
+            student: {
+              name: user.name,
+              university: student.university,
+              major: student.major,
+              graduationYear: student.graduationYear,
+              gpa: student.gpa || undefined,
+              skills: student.skills || [],
+              interests: student.interests || [],
+              location: student.location,
+              resumeText: student.resumeText || undefined,
+            },
+            internship: {
+              title: internship.title,
+              description: internship.description,
+              requirements: internship.requirements || [],
+              skills: internship.skills || [],
+              location: internship.location,
+              duration: internship.duration,
+              stipend: internship.stipend || undefined,
+              company: {
+                name: internship.employer.companyName,
+                industry: internship.employer.industry,
+                description: internship.employer.description || undefined,
+              }
+            }
+          };
+
+          const aiAnalysis = await aiService.analyzeMatch(matchRequest);
+          
+          // Save AI analysis to database for future use
+          await this.saveAIMatchAnalysis(student.userId, internshipId, aiAnalysis);
+          
+          return {
+            ...student,
+            user,
+            matchScore: aiAnalysis.overallMatch,
+            matchReasons: aiAnalysis.keyStrengths.slice(0, 4),
+            aiAnalysis // Include full analysis for UI
+          };
+        } catch (error) {
+          console.error(`AI analysis failed for student ${studentRecord.users?.name}:`, error);
+          
+          // Fallback to basic matching if AI fails
+          return this.basicCandidateMatch(studentRecord, internship);
         }
-      }
+      })
+    );
 
-      // GPA consideration
-      if (student.students.gpa) {
-        const gpaNum = parseFloat(student.students.gpa);
-        if (gpaNum >= 3.5) {
-          score += 20;
-          reasons.push('High academic performance');
-        } else if (gpaNum >= 3.0) {
-          score += 10;
-          reasons.push('Good academic performance');
-        }
-      }
-
-      // Graduation year
-      if (student.students.graduationYear >= 2024) {
-        score += 10;
-        reasons.push('Available for upcoming internship period');
-      }
-
-      score = Math.min(100, Math.max(0, score));
-      console.log({student});
-      
-      return {
-        ...student.students,
-        user: student.users!,
-        matchScore: score,
-        matchReasons: reasons.slice(0, 4)
-      };
-    });
-
-    return matches
+    return aiMatches
       .sort((a, b) => b.matchScore - a.matchScore)
       .slice(0, limit);
+  }
+
+  // Fallback basic candidate matching
+  private basicCandidateMatch(studentRecord: any, internship: any) {
+    const student = studentRecord.students;
+    const user = studentRecord.users!;
+    let score = 50;
+    const reasons: string[] = [];
+
+    // Skill matching
+    if (student.skills && internship.skills) {
+      const studentSkills = student.skills.map((s: string) => s.toLowerCase());
+      const internshipSkills = internship.skills.map((s: string) => s.toLowerCase());
+      const matchingSkills = studentSkills.filter((skill: string) => 
+        internshipSkills.some((reqSkill: string) => reqSkill.includes(skill) || skill.includes(reqSkill))
+      );
+      
+      if (matchingSkills.length > 0) {
+        score += matchingSkills.length * 12;
+        reasons.push(`Strong skills match: ${matchingSkills.slice(0, 3).join(', ')}`);
+      }
+    }
+
+    // GPA consideration
+    if (student.gpa) {
+      const gpaNum = parseFloat(student.gpa);
+      if (gpaNum >= 3.5) {
+        score += 20;
+        reasons.push('High academic performance');
+      } else if (gpaNum >= 3.0) {
+        score += 10;
+        reasons.push('Good academic performance');
+      }
+    }
+
+    score = Math.min(100, Math.max(0, score));
+    
+    return {
+      ...student,
+      user,
+      matchScore: score,
+      matchReasons: reasons.slice(0, 4)
+    };
   }
 }
 
